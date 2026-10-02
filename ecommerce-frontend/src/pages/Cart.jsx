@@ -2,14 +2,12 @@
 import { Link } from "react-router-dom";
 import { CartContext } from "../context/CartContext";
 import { ProductContext } from "../context/ProductContext";
-import { CurrencyContext } from "../context/CurrencyContext";
+import { formatPEN } from "../utils/formatPEN";
 import "./Cart.css";
 
 function Cart() {
   const { cart, removeFromCart, updateQuantity, addToCart } = useContext(CartContext);
   const { products } = useContext(ProductContext);
-  const { formatPrice } = useContext(CurrencyContext);
-
   const total = cart.reduce((sum, product) => sum + product.precio * product.cantidad, 0);
 
   const suggestions = useMemo(() => {
@@ -32,7 +30,7 @@ function Cart() {
             <article key={product.id} className="product-card suggestion-card">
               <img src={product.imagen} alt={product.nombre} />
               <h4>{product.nombre}</h4>
-              <p>{formatPrice(product.precio)}</p>
+              <p>{formatPEN(product.precio)}</p>
               <button type="button" onClick={() => addToCart(product)}>
                 Agregar al carrito
               </button>
@@ -57,7 +55,7 @@ function Cart() {
               <li key={product.id} className="cart-item">
                 <div className="cart-item-info">
                   <h3>{product.nombre}</h3>
-                  <p>Precio: {formatPrice(product.precio)}</p>
+                  <p>Precio: {formatPEN(product.precio)}</p>
                 </div>
                 <div className="cart-item-actions">
                   <label>
@@ -84,7 +82,7 @@ function Cart() {
           </div>
         </>
       )}
-      <h3 className="cart-total">Total: {formatPrice(total)}</h3>
+      <h3 className="cart-total">Total: {formatPEN(total)}</h3>
       {cart.length > 0 && renderSuggestions()}
     </div>
   );

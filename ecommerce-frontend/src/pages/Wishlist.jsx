@@ -3,15 +3,13 @@ import { Link } from "react-router-dom";
 import { WishlistContext } from "../context/WishlistContext";
 import { CartContext } from "../context/CartContext";
 import { AuthContext } from "../context/AuthContext";
-import { CurrencyContext } from "../context/CurrencyContext";
+import { formatPEN } from "../utils/formatPEN";
 import "./Wishlist.css";
 
 function Wishlist() {
   const { wishlist, removeFromWishlist } = useContext(WishlistContext);
   const { addToCart } = useContext(CartContext);
   const { isAuthenticated } = useContext(AuthContext);
-  const { formatPrice } = useContext(CurrencyContext);
-
   if (!isAuthenticated) {
     return (
       <div className="wishlist-page">
@@ -58,7 +56,7 @@ function Wishlist() {
             <div className="wishlist-info">
               <span className="wishlist-category">{product.categoria}</span>
               <h3>{product.nombre}</h3>
-              <p className="wishlist-price">{formatPrice(product.precio)}</p>
+              <p className="wishlist-price">{formatPEN(product.precio)}</p>
               {product.descripcion && (
                 <p className="wishlist-description">{product.descripcion}</p>
               )}

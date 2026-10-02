@@ -1,12 +1,22 @@
 import React, { useEffect, useState } from "react";
+import { formatPEN } from "../utils/formatPEN";
 import "./ProductModal.css";
 
-function ProductModal({ product, onClose, onAddToCart, formatPrice }) {
+function ProductModal({ product, onClose, onAddToCart }) {
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
     setIndex(0);
   }, [product?.id]);
+
+  useEffect(() => {
+    if (!product) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [product, onClose]);
 
   if (!product) return null;
 
@@ -64,7 +74,7 @@ function ProductModal({ product, onClose, onAddToCart, formatPrice }) {
               <p className="product-modal__desc">{product.descripcion}</p>
             )}
             <div className="product-modal__meta">
-              <span className="price">{formatPrice(product.precio)}</span>
+              <span className="price">{formatPEN(product.precio)}</span>
               <span className={`stock ${product.stock > 0 ? "stock--ok" : "stock--out"}`}>
                 {product.stock > 0 ? `Stock: ${product.stock}` : "Sin stock"}
               </span>

@@ -1,8 +1,9 @@
-﻿import { useContext, useMemo, useState, useEffect } from "react";
+import { useContext, useMemo, useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
 import { ProductContext } from "../context/ProductContext";
-import { CurrencyContext } from "../context/CurrencyContext";
 import { ToastContext } from "../context/ToastContext";
+import { formatPEN } from "../utils/formatPEN";
 import "./AdminDashboard.css";
 
 const emptyProduct = {
@@ -20,11 +21,19 @@ const ORDERS_PER_PAGE = 8;
 const STOCK_LOW_THRESHOLD = 5;
 const STOCK_LOG_KEY = "stockChangesLog";
 
+const readLegacyProducts = () => {
+  try {
+    const stored = JSON.parse(localStorage.getItem("products") || "[]");
+    return Array.isArray(stored) ? stored : [];
+  } catch {
+    return [];
+  }
+};
+
 function AdminDashboard() {
-  const { isAdmin, user } = useContext(AuthContext);
+  const { isAdmin, user, logout } = useContext(AuthContext);
   const { products, addProduct, updateProduct, removeProduct, setStock } =
     useContext(ProductContext);
-  const { formatPrice } = useContext(CurrencyContext);
   const { notify } = useContext(ToastContext);
   const categoryOptions = useMemo(() => {
     const unique = new Set(
@@ -63,6 +72,11 @@ function AdminDashboard() {
   const [inventoryFeedback, setInventoryFeedback] = useState("");
   const [showImport, setShowImport] = useState(false);
   const [bulkInput, setBulkInput] = useState("");
+  const [legacyCatalogCount, setLegacyCatalogCount] = useState(
+    () => readLegacyProducts().length
+  );
+  const [importingLegacy, setImportingLegacy] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [stockChanges, setStockChanges] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem(STOCK_LOG_KEY) || "[]");
@@ -86,11 +100,6 @@ function AdminDashboard() {
     [orders]
   );
 
-  const totalProductos = useMemo(
-    () => products.reduce((acc, product) => acc + Number(product.stock || 0), 0),
-    [products]
-  );
-
   const lowStockProducts = useMemo(
     () =>
       products.filter((product) => {
@@ -104,6 +113,11 @@ function AdminDashboard() {
     () => lowStockProducts.filter((product) => Number(product.stock || 0) === 0).length,
     [lowStockProducts]
   );
+
+  const availableProductsCount = products.filter((product) => Number(product.stock) > 0).length;
+  const pendingOrdersCount = orders.filter((order) => (order.status || "pendiente") === "pendiente").length;
+  const completedOrdersCount = orders.filter((order) => order.status === "entregado").length;
+  const recentOrders = [...orders].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
 
   const filteredProducts = useMemo(() => {
     if (stockFilter === "low") {
@@ -176,7 +190,7 @@ function AdminDashboard() {
     return errors;
   };
 
-  const handleProductSubmit = (event) => {
+  const handleProductSubmit = async (event) => {
     event.preventDefault();
     const errors = validateProductForm(productForm);
     setProductErrors(errors);
@@ -200,19 +214,24 @@ function AdminDashboard() {
       descripcion: productForm.descripcion || "",
     };
 
-    if (editingId) {
-      updateProduct(editingId, payload);
-      setInventoryFeedback(`Producto ${productForm.nombre} actualizado.`);
-      notify(`Producto "${productForm.nombre}" actualizado.`, { type: "success" });
-    } else {
-      addProduct(payload);
-      setInventoryFeedback(`Producto ${productForm.nombre} agregado.`);
-      notify(`Producto "${productForm.nombre}" agregado al catalogo.`, { type: "success" });
-    }
+    try {
+      if (editingId) {
+        await updateProduct(editingId, payload);
+        setInventoryFeedback(`Producto ${productForm.nombre} actualizado.`);
+        notify(`Producto "${productForm.nombre}" actualizado.`, { type: "success" });
+      } else {
+        await addProduct(payload);
+        setInventoryFeedback(`Producto ${productForm.nombre} agregado.`);
+        notify(`Producto "${productForm.nombre}" agregado al catálogo.`, { type: "success" });
+      }
 
-    setProductForm({ ...emptyProduct });
-    setEditingId(null);
-    setProductErrors({});
+      setProductForm({ ...emptyProduct });
+      setEditingId(null);
+      setProductErrors({});
+    } catch (error) {
+      console.error("No se pudo guardar el producto:", error);
+      notify("No se pudo guardar el producto en Firebase.", { type: "error" });
+    }
   };
 
   const startEdit = (product) => {
@@ -233,16 +252,21 @@ function AdminDashboard() {
     setProductForm({ ...emptyProduct });
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (window.confirm("Eliminar este producto?")) {
       const product = products.find((item) => item.id === id);
-      removeProduct(id);
-      setInventoryFeedback("Producto eliminado.");
-      notify(`Producto "${(product?.nombre || id)}" eliminado.`, { type: "info" });
+      try {
+        await removeProduct(id);
+        setInventoryFeedback("Producto eliminado.");
+        notify(`Producto "${(product?.nombre || id)}" eliminado.`, { type: "info" });
+      } catch (error) {
+        console.error("No se pudo eliminar el producto:", error);
+        notify("No se pudo eliminar el producto de Firebase.", { type: "error" });
+      }
     }
   };
 
-  const handleStockUpdate = (id, value) => {
+  const handleStockUpdate = async (id, value) => {
     const product = products.find((item) => item.id === id);
     if (!product) {
       notify("Producto no encontrado.", { type: "error" });
@@ -264,7 +288,13 @@ function AdminDashboard() {
       notify("Actualizacion de stock cancelada.", { type: "info" });
       return;
     }
-    setStock(id, nextStock);
+    try {
+      await setStock(id, nextStock);
+    } catch (error) {
+      console.error("No se pudo actualizar el inventario:", error);
+      notify("No se pudo actualizar el inventario en Firebase.", { type: "error" });
+      return;
+    }
     setStockChanges((prev) =>
       [
         {
@@ -305,7 +335,7 @@ function AdminDashboard() {
     }
   };
 
-  const handleImportSubmit = () => {
+  const handleImportSubmit = async () => {
     const rawInput = bulkInput.trim();
     if (!rawInput) {
       setInventoryFeedback("Ingresa datos para importar.");
@@ -339,7 +369,7 @@ function AdminDashboard() {
     let imported = 0;
     const errors = [];
 
-    entries.forEach((entry, index) => {
+    for (const [index, entry] of entries.entries()) {
       const nombre = (entry.nombre || entry.name || "").trim();
       const precioValue = Number(entry.precio ?? entry.price);
       const stockValue = Number(entry.stock ?? entry.quantity ?? entry.qty);
@@ -355,17 +385,17 @@ function AdminDashboard() {
 
       if (invalid) {
         errors.push(index + 1);
-        return;
+        continue;
       }
 
-      addProduct({
-        nombre,
-        precio: precioValue,
-        stock: stockValue,
-        imagen,
-      });
-      imported += 1;
-    });
+      try {
+        await addProduct({ nombre, precio: precioValue, stock: stockValue, imagen });
+        imported += 1;
+      } catch (error) {
+        console.error("No se pudo importar un producto:", error);
+        errors.push(index + 1);
+      }
+    }
 
     if (imported) {
       const errorMessage = errors.length ? ` Se omitieron entradas: ${errors.join(", ")}.` : "";
@@ -377,6 +407,86 @@ function AdminDashboard() {
       setInventoryFeedback("No se importaron productos validos.");
       notify("No se importaron productos validos.", { type: "warning" });
     }
+  };
+
+  const handleImportLegacyCatalog = async () => {
+    const legacyProducts = readLegacyProducts();
+    setLegacyCatalogCount(legacyProducts.length);
+    if (!legacyProducts.length) {
+      setInventoryFeedback("No hay productos guardados en este navegador.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Se revisarán ${legacyProducts.length} productos guardados en este navegador y se copiarán a Firebase. Los duplicados por nombre y precio se omitirán. Los datos locales no se borrarán. ¿Continuar?`
+    );
+    if (!confirmed) return;
+
+    setImportingLegacy(true);
+    let imported = 0;
+    let duplicates = 0;
+    const errors = [];
+    const keys = new Set(
+      products.map((product) => `${product.nombre.trim().toLowerCase()}|${Number(product.precio)}`)
+    );
+
+    for (const [index, entry] of legacyProducts.entries()) {
+      const source = entry && typeof entry === "object" ? entry : {};
+      const nombre = String(source.nombre || source.name || "").trim();
+      const precio = Number(source.precio ?? source.price);
+      const stock = Number(source.stock ?? source.quantity ?? source.qty);
+      const imagen = String(
+        source.imagen || source.imagenUrl || source.image || source.imageUrl ||
+          (Array.isArray(source.imagenes) ? source.imagenes[0] : "") ||
+          (Array.isArray(source.images) ? source.images[0] : "")
+      ).trim();
+      const key = `${nombre.toLowerCase()}|${precio}`;
+
+      if (
+        !nombre ||
+        !Number.isFinite(precio) ||
+        precio <= 0 ||
+        !Number.isFinite(stock) ||
+        stock < 0 ||
+        (imagen && !isValidHttpUrl(imagen))
+      ) {
+        errors.push(index + 1);
+        continue;
+      }
+      if (keys.has(key)) {
+        duplicates += 1;
+        continue;
+      }
+
+      try {
+        const tags = source.etiquetas || source.tags || [];
+        await addProduct({
+          nombre,
+          precio,
+          stock,
+          imagen,
+          categoria: String(source.categoria || source.category || "General").trim(),
+          etiquetas: Array.isArray(tags) ? tags : String(tags).split(","),
+          descripcion: String(source.descripcion || source.description || "").trim(),
+        });
+        keys.add(key);
+        imported += 1;
+      } catch (error) {
+        console.error("No se pudo migrar un producto local:", error);
+        errors.push(index + 1);
+      }
+    }
+
+    const details = [
+      `${imported} importados`,
+      `${duplicates} duplicados omitidos`,
+      `${errors.length} inválidos o fallidos`,
+    ].join(", ");
+    setInventoryFeedback(`Migración del catálogo local terminada: ${details}.`);
+    notify(`Migración del catálogo local: ${details}.`, {
+      type: errors.length ? "warning" : "success",
+    });
+    setImportingLegacy(false);
   };
 
   const clearStockLog = () => {
@@ -392,22 +502,62 @@ function AdminDashboard() {
   if (!isAdmin) {
     return (
       <div className="admin-locked">
-        <h2>Zona restringida</h2>
-        <p>Debes iniciar sesion como administrador para acceder a este panel.</p>
-        <p>
-          Usa las credenciales <code>admin@unishop.com</code> / <code>admin123</code> en el
-          formulario de login.
-        </p>
+        <h2>Acceso restringido</h2>
+        <p>Esta cuenta no tiene permisos de administración.</p>
       </div>
     );
   }
 
   return (
-    <div className="admin-dashboard">
-      <header className="admin-header">
-        <div>
-          <h2>Panel de administrador</h2>
-          <p>Bienvenido, {user?.displayName || user?.email}</p>
+    <div className="admin-layout">
+      {sidebarOpen && (
+        <button
+          type="button"
+          className="admin-sidebar-scrim"
+          aria-label="Cerrar menú administrativo"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+      <aside className={`admin-sidebar${sidebarOpen ? " is-open" : ""}`}>
+        <Link className="admin-sidebar-brand" to="/">UniShop <span>ADMIN</span></Link>
+        <p className="admin-sidebar-caption">GESTIÓN DE TIENDA</p>
+        <nav aria-label="Navegación administrativa">
+          <a href="#dashboard" onClick={() => setSidebarOpen(false)}>▦ <span>Dashboard</span></a>
+          <a href="#productos" onClick={() => setSidebarOpen(false)}>□ <span>Productos</span></a>
+          <a href="#inventario" onClick={() => setSidebarOpen(false)}>▤ <span>Inventario</span></a>
+          <a href="#pedidos" onClick={() => setSidebarOpen(false)}>▧ <span>Pedidos</span></a>
+          <a href="#reportes" onClick={() => setSidebarOpen(false)}>◷ <span>Reportes</span></a>
+        </nav>
+        <div className="admin-sidebar-bottom">
+          <Link to="/perfil">Mi perfil</Link>
+          <button type="button" onClick={logout}>Cerrar sesión</button>
+        </div>
+      </aside>
+
+      <main className="admin-dashboard">
+      <button
+        className="admin-sidebar-toggle"
+        type="button"
+        aria-expanded={sidebarOpen}
+        onClick={() => setSidebarOpen((open) => !open)}
+      >
+        ☰ <span>Menú administrativo</span>
+      </button>
+      <header id="dashboard" className="admin-header">
+        <div className="admin-header-top">
+          <div>
+            <span className="admin-eyebrow">UNISHOP / ADMINISTRACIÓN</span>
+            <h2>Dashboard</h2>
+            <p>Hola, {user?.displayName || user?.email}. Aquí tienes el resumen de la tienda.</p>
+          </div>
+          <div className="admin-user-menu">
+            <a href="#inventario" aria-label={`${lowStockProducts.length} productos con stock bajo`} className="admin-notification">
+              ♧ <span>{lowStockProducts.length}</span>
+            </a>
+            <span className="admin-avatar">{(user?.displayName || user?.email || "A").charAt(0).toUpperCase()}</span>
+            <span>{user?.displayName || user?.email}</span>
+            <button type="button" onClick={logout}>Salir</button>
+          </div>
         </div>
         <div className="admin-metrics">
           <div className="metric">
@@ -415,18 +565,52 @@ function AdminDashboard() {
             <strong>{products.length}</strong>
           </div>
           <div className="metric">
-            <span>Stock acumulado</span>
-            <strong>{totalProductos}</strong>
+            <span>Productos disponibles</span>
+            <strong>{availableProductsCount}</strong>
           </div>
           <div className="metric">
-            <span>Ventas registradas</span>
-            <strong>{formatPrice(totalVentas)}</strong>
+            <span>Stock bajo</span>
+            <strong>{lowStockProducts.length}</strong>
+          </div>
+          <div className="metric">
+            <span>Pedidos locales</span>
+            <strong>{orders.length}</strong>
+          </div>
+          <div className="metric">
+            <span>Pendientes</span>
+            <strong>{pendingOrdersCount}</strong>
+          </div>
+          <div className="metric">
+            <span>Entregados</span>
+            <strong>{completedOrdersCount}</strong>
+          </div>
+          <div className="metric metric--sales">
+            <span>Ingresos simulados</span>
+            <strong>{formatPEN(totalVentas)}</strong>
           </div>
         </div>
+        <p className="admin-data-note">El catálogo se consulta desde Firebase. Pedidos e ingresos corresponden a registros simulados guardados en este navegador.</p>
       </header>
 
+      <section className="admin-overview-grid">
+        <article className="admin-section admin-overview-card">
+          <div className="section-header"><h3>Pedidos recientes</h3><a href="#pedidos">Ver pedidos</a></div>
+          {recentOrders.length === 0 ? <p>Aún no hay pedidos registrados en este navegador.</p> : (
+            <div className="table-wrapper"><table className="admin-compact-table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Total</th><th>Estado</th></tr></thead>
+              <tbody>{recentOrders.map((order) => <tr key={order.id}><td>{order.id}</td><td>{order.userEmail || "Invitado"}</td><td>{formatPEN(Number(order.total || 0))}</td><td>{order.status || "pendiente"}</td></tr>)}</tbody>
+            </table></div>
+          )}
+        </article>
+        <article className="admin-section admin-overview-card">
+          <div className="section-header"><h3>Stock bajo</h3><a href="#inventario">Abrir inventario</a></div>
+          {lowStockProducts.length === 0 ? <p>Todos los productos tienen stock superior a {STOCK_LOW_THRESHOLD} unidades.</p> : (
+            <ul className="admin-low-stock-list">{lowStockProducts.slice(0, 5).map((product) => <li key={product.id}><span>{product.nombre}</span><strong>{product.stock} uds.</strong></li>)}</ul>
+          )}
+        </article>
+      </section>
+
       {/* FORMULARIO PRODUCTOS */}
-      <section className="admin-section">
+      <section id="productos" className="admin-section">
         <div className="section-header">
           <h3>{editingId ? "Editar producto" : "Agregar producto"}</h3>
           {editingId && (
@@ -451,7 +635,7 @@ function AdminDashboard() {
             )}
           </label>
           <label>
-            Precio base (PEN)
+            Precio base (S/)
             <input
               type="number"
               step="0.01"
@@ -547,7 +731,7 @@ function AdminDashboard() {
       </section>
 
       {/* INVENTARIO */}
-      <section className="admin-section">
+      <section id="inventario" className="admin-section">
         <div className="section-header">
           <h3>Inventario</h3>
           <div className="inventory-toolbar">
@@ -577,6 +761,21 @@ function AdminDashboard() {
         )}
         {showImport && (
           <div className="inventory-import">
+            {legacyCatalogCount > 0 && (
+              <div className="legacy-catalog-import">
+                <p>
+                  Se encontraron {legacyCatalogCount} productos guardados en este navegador.
+                  Puedes copiarlos a Firebase; se omitirán coincidencias por nombre y precio.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleImportLegacyCatalog}
+                  disabled={importingLegacy}
+                >
+                  {importingLegacy ? "Importando catálogo..." : "Importar catálogo local"}
+                </button>
+              </div>
+            )}
             <textarea
               rows={6}
               value={bulkInput}
@@ -632,13 +831,14 @@ function AdminDashboard() {
                         <img src={product.imagen} alt={product.nombre} />
                         <span>{product.nombre}</span>
                       </td>
-                      <td>{formatPrice(Number(product.precio))}</td>
+                      <td>{formatPEN(Number(product.precio))}</td>
                       <td>
                         <input
+                          key={`${product.id}-${product.stock}`}
                           type="number"
                           min="0"
-                          value={product.stock}
-                          onChange={(e) => handleStockUpdate(product.id, e.target.value)}
+                          defaultValue={product.stock}
+                          onBlur={(e) => handleStockUpdate(product.id, e.target.value)}
                         />
                       </td>
                       <td className="actions">
@@ -657,7 +857,7 @@ function AdminDashboard() {
       </section>
 
       {/* REGISTRO STOCK */}
-      <section className="admin-section">
+      <section id="actividad" className="admin-section">
         <div className="section-header">
           <h3>Registro de cambios de stock</h3>
           {stockChanges.length > 0 && (
@@ -686,7 +886,7 @@ function AdminDashboard() {
       </section>
 
       {/* PEDIDOS */}
-      <section className="admin-section">
+      <section id="pedidos" className="admin-section">
         <div className="section-header">
           <h3>Pedidos</h3>
           <div className="orders-toolbar">
@@ -740,7 +940,7 @@ function AdminDashboard() {
                     <td>{order.token || "-"}</td>
                     <td>{order.userEmail}</td>
                     <td>{new Date(order.date).toLocaleString()}</td>
-                    <td>{formatPrice(Number(order.total || 0))}</td>
+                    <td>{formatPEN(Number(order.total || 0))}</td>
                     <td>
                       <select
                         value={order.status || "pendiente"}
@@ -759,7 +959,7 @@ function AdminDashboard() {
                         <ul>
                           {order.items.map((item) => (
                             <li key={item.id}>
-                              {item.nombre} x {item.cantidad} - {formatPrice(item.precio * item.cantidad)}
+                              {item.nombre} x {item.cantidad} - {formatPEN(item.precio * item.cantidad)}
                             </li>
                           ))}
                         </ul>
@@ -793,22 +993,23 @@ function AdminDashboard() {
           </div>
         )}
       </section>
+
+      <section id="reportes" className="admin-section admin-reports">
+        <div className="section-header">
+          <h3>Resumen de reportes</h3>
+          <span className="admin-data-badge">Datos disponibles en este proyecto</span>
+        </div>
+        <div className="admin-report-grid">
+          <div><span>Productos en catálogo</span><strong>{products.length}</strong></div>
+          <div><span>Unidades disponibles</span><strong>{products.reduce((sum, product) => sum + Math.max(0, Number(product.stock) || 0), 0)}</strong></div>
+          <div><span>Pedidos pendientes</span><strong>{pendingOrdersCount}</strong></div>
+          <div><span>Ingresos locales simulados</span><strong>{formatPEN(totalVentas)}</strong></div>
+        </div>
+        <p>Los pedidos e ingresos se guardan en el navegador que realizó la compra y no representan pagos confirmados por un proveedor externo.</p>
+      </section>
+      </main>
     </div>
   );
 }
 
 export default AdminDashboard;
-
-
-
-
-
-
-
-
-
-
-
-
-
-

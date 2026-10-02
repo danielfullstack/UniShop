@@ -1,17 +1,12 @@
 import React, { useContext, useMemo } from "react";
 import { ProductContext } from "../context/ProductContext";
-import { CurrencyContext } from "../context/CurrencyContext";
+import { formatPEN } from "../utils/formatPEN";
 import ProductCard from "./ProductCard";
 import "./ProductList.css";
 
-const currencySymbols = {
-  PEN: "S/",
-  USD: "$",
-  EUR: "�",
-};
-
 function ProductList() {
   const {
+    products,
     filteredProducts,
     filters,
     updateFilters,
@@ -19,10 +14,9 @@ function ProductList() {
     toggleTagFilter,
     availableCategories,
     availableTags,
+    loading,
+    error,
   } = useContext(ProductContext);
-  const { formatPrice, currency, convert, baseCurrency } = useContext(CurrencyContext);
-
-  const currencySymbol = currencySymbols[currency] || currency;
   const resultsCount = filteredProducts.length;
 
   const hasActiveFilters = useMemo(
@@ -45,21 +39,19 @@ function ProductList() {
     if (filters.minPrice) {
       const amount = Number(filters.minPrice);
       if (!Number.isNaN(amount)) {
-        const baseValue = convert(amount, currency, baseCurrency);
-        chips.push(`Min ${formatPrice(baseValue)}`);
+        chips.push(`Min ${formatPEN(amount)}`);
       }
     }
     if (filters.maxPrice) {
       const amount = Number(filters.maxPrice);
       if (!Number.isNaN(amount)) {
-        const baseValue = convert(amount, currency, baseCurrency);
-        chips.push(`Max ${formatPrice(baseValue)}`);
+        chips.push(`Max ${formatPEN(amount)}`);
       }
     }
     if (filters.onlyAvailable) chips.push("Solo disponibles");
     if (filters.tags.length > 0) chips.push(`Etiquetas: ${filters.tags.join(", ")}`);
     return chips;
-  }, [filters, formatPrice, convert, currency, baseCurrency]);
+  }, [filters]);
 
   const handleAvailabilityChange = (event) => {
     updateFilters({ onlyAvailable: event.target.checked });
@@ -82,6 +74,9 @@ function ProductList() {
           {resultsCount} resultado{resultsCount === 1 ? "" : "s"}
         </span>
       </header>
+
+      {loading && <p className="products-state" role="status">Cargando productos…</p>}
+      {!loading && error && <p className="products-state products-state--error" role="alert">{error}</p>}
 
       <form className="products-filters" onSubmit={(event) => event.preventDefault()}>
         <div className="filter-row">
@@ -120,21 +115,21 @@ function ProductList() {
 
         <div className="filter-row">
           <label>
-            Precio minimo ({currency})
+            Precio mínimo (S/)
             <input
               type="number"
               min="0"
-              placeholder={`${currencySymbol} 0`}
+              placeholder="S/ 0"
               value={filters.minPrice}
               onChange={(event) => updateFilters({ minPrice: event.target.value })}
             />
           </label>
           <label>
-            Precio maximo ({currency})
+            Precio máximo (S/)
             <input
               type="number"
               min="0"
-              placeholder={`${currencySymbol} 0`}
+              placeholder="S/ 0"
               value={filters.maxPrice}
               onChange={(event) => updateFilters({ maxPrice: event.target.value })}
             />
@@ -180,17 +175,19 @@ function ProductList() {
         </div>
       )}
 
-      {filteredProducts.length === 0 ? (
+      {!loading && !error && filteredProducts.length === 0 ? (
         <p className="products-empty">
-          No encontramos productos con esos filtros. Ajusta la busqueda o reinicia los filtros.
+          {products.length === 0
+            ? "Todavía no hay productos publicados."
+            : "No encontramos productos con esos filtros. Ajusta la búsqueda o reinicia los filtros."}
         </p>
-      ) : (
+      ) : !loading && !error ? (
         <div className="product-grid">
           {filteredProducts.map((product) => (
             <ProductCard key={product.id} product={product} />
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

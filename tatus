@@ -1,0 +1,34 @@
+warning: in the working copy of 'ecommerce-frontend/src/components/ProductCard.jsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'ecommerce-frontend/src/context/AuthContext.jsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'ecommerce-frontend/src/context/ProductContext.jsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'ecommerce-frontend/src/pages/Home.jsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'ecommerce-frontend/src/pages/LoginForm.jsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'ecommerce-frontend/src/pages/Products.jsx', LF will be replaced by CRLF the next time Git touches it
+ ecommerce-frontend/src/App.jsx                     |  17 [32m+[m[31m-[m
+ .../src/components/CurrencySelector.css            |  22 [31m-[m
+ .../src/components/CurrencySelector.jsx            |  32 [31m--[m
+ ecommerce-frontend/src/components/Footer.css       |   2 [32m+[m[31m-[m
+ ecommerce-frontend/src/components/Navbar.css       |  20 [32m+[m[31m-[m
+ ecommerce-frontend/src/components/Navbar.jsx       |   4 [32m+[m[31m-[m
+ ecommerce-frontend/src/components/ProductCard.jsx  | 101 [32m++[m[31m---[m
+ ecommerce-frontend/src/components/ProductList.jsx  |  43 [32m+[m[31m-[m
+ ecommerce-frontend/src/components/ProductModal.jsx |  14 [32m+[m[31m-[m
+ ecommerce-frontend/src/context/AuthContext.jsx     | 150 [32m+++++[m[31m--[m
+ ecommerce-frontend/src/context/CartContext.jsx     |  28 [32m+[m[31m-[m
+ ecommerce-frontend/src/context/CurrencyContext.jsx |  63 [31m---[m
+ ecommerce-frontend/src/context/ProductContext.jsx  | 475 [32m++++++[m[31m---------------[m
+ ecommerce-frontend/src/context/ToastContext.jsx    |   1 [32m+[m
+ ecommerce-frontend/src/context/WishlistContext.jsx |  27 [32m+[m[31m-[m
+ ecommerce-frontend/src/main.jsx                    |  17 [32m+[m[31m-[m
+ ecommerce-frontend/src/pages/AdminDashboard.css    | 135 [32m++++++[m
+ ecommerce-frontend/src/pages/AdminDashboard.jsx    | 359 [32m++++++++++++[m[31m----[m
+ ecommerce-frontend/src/pages/AdminDashboardFB.jsx  |   3 [32m+[m[31m-[m
+ ecommerce-frontend/src/pages/Cart.jsx              |  10 [32m+[m[31m-[m
+ ecommerce-frontend/src/pages/Checkout.jsx          | 174 [32m++[m[31m------[m
+ ecommerce-frontend/src/pages/Home.jsx              |  80 [32m+++[m[31m-[m
+ ecommerce-frontend/src/pages/LoginForm.jsx         | 184 [32m+++++[m[31m---[m
+ ecommerce-frontend/src/pages/Products.jsx          |  74 [32m+[m[31m---[m
+ ecommerce-frontend/src/pages/UserProfile.jsx       |  40 [32m+[m[31m-[m
+ ecommerce-frontend/src/pages/Wishlist.jsx          |   6 [32m+[m[31m-[m
+ ecommerce-frontend/src/styles/global.css           |  16 [32m+[m[31m-[m
+ 27 files changed, 1082 insertions(+), 1015 deletions(-)

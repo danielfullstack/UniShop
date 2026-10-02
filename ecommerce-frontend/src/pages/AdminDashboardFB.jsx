@@ -1,5 +1,6 @@
 import React, { useContext, useEffect, useState } from "react";
 import { AuthContext } from "../context/AuthContext";
+import { formatPEN } from "../utils/formatPEN";
 import { db, storage } from "../firebase/firebaseConfig";
 import {
   addDoc,
@@ -178,7 +179,7 @@ function AdminDashboardFB() {
                 </div>
                 <div className="item-body">
                   <strong>{p.nombre}</strong>
-                  <span>S/. {Number(p.precio || 0).toFixed(2)}</span>
+                  <span>{formatPEN(p.precio)}</span>
                   <small>Stock: {p.stock ?? 0}</small>
                 </div>
                 <div className="item-actions">

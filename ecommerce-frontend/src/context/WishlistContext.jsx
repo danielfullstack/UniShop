@@ -2,51 +2,58 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from "
 import { AuthContext } from "./AuthContext";
 import { ProductContext } from "./ProductContext";
 
+// eslint-disable-next-line react-refresh/only-export-components -- The context and its provider belong together.
 export const WishlistContext = createContext();
 
 const storageKey = (email) => `wishlist-${email}`;
 
 const parseId = (value) => {
-  const id = Number(value);
-  return Number.isFinite(id) ? id : null;
+  if (value === null || value === undefined) return null;
+  const id = String(value).trim();
+  return id ? id : null;
 };
 
 export function WishlistProvider({ children }) {
   const { user } = useContext(AuthContext);
   const { products } = useContext(ProductContext);
   const [wishlistIds, setWishlistIds] = useState([]);
+  const [loadedEmail, setLoadedEmail] = useState(null);
 
   const canManageWishlist = !!user?.email;
 
   useEffect(() => {
     if (!canManageWishlist) {
       setWishlistIds([]);
+      setLoadedEmail(null);
       return;
     }
 
+    let ids = [];
     try {
       const stored = localStorage.getItem(storageKey(user.email));
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) {
-          const ids = parsed
+          ids = parsed
             .map((value) => parseId(value))
             .filter((value) => value !== null);
-          setWishlistIds(Array.from(new Set(ids)));
-          return;
         }
       }
     } catch (error) {
       console.warn("No se pudo leer wishlist desde localStorage", error);
     }
-
-    setWishlistIds([]);
+    setWishlistIds(Array.from(new Set(ids)));
+    setLoadedEmail(user.email);
   }, [canManageWishlist, user?.email]);
 
   useEffect(() => {
-    if (!canManageWishlist) return;
-    localStorage.setItem(storageKey(user.email), JSON.stringify(wishlistIds));
-  }, [canManageWishlist, user?.email, wishlistIds]);
+    if (!canManageWishlist || loadedEmail !== user?.email) return;
+    try {
+      localStorage.setItem(storageKey(user.email), JSON.stringify(wishlistIds));
+    } catch {
+      // Los favoritos permanecen en memoria si el navegador bloquea el almacenamiento.
+    }
+  }, [canManageWishlist, user?.email, wishlistIds, loadedEmail]);
 
   const wishlist = useMemo(() => {
     if (wishlistIds.length === 0) return [];

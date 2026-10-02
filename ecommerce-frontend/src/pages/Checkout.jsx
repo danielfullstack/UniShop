@@ -3,33 +3,11 @@ import { Link } from "react-router-dom";
 import { CartContext } from "../context/CartContext";
 import { AuthContext } from "../context/AuthContext";
 import { ProductContext } from "../context/ProductContext";
-import { CurrencyContext } from "../context/CurrencyContext";
-import { sendSimulatedEmail } from "../utils/emailSimulator";
+import { formatPEN } from "../utils/formatPEN";
+import { paymentOptions } from "../services/checkout/PaymentStrategyFactory";
+import { CouponStrategyFactory } from "../services/checkout/CouponStrategyFactory";
+import { checkoutFacade } from "../services/checkout/CheckoutFacade";
 import "./Checkout.css";
-
-const paymentOptions = [
-  {
-    id: "stripe",
-    label: "Tarjeta (Stripe simulado)",
-    description: "Ingresa los datos de tarjeta en un entorno seguro simulado.",
-  },
-  {
-    id: "paypal",
-    label: "PayPal",
-    description: "Paga con tu cuenta PayPal en un flujo ficticio.",
-  },
-  {
-    id: "yape",
-    label: "Yape",
-    description: "Transferencia inmediata desde tu celular (referencia simulada).",
-  },
-];
-
-const coupons = {
-  DESCUENTO10: { type: "percent", value: 10, label: "10% de descuento" },
-  ENVIOFREE: { type: "shipping", label: "Envio gratis" },
-  BIENVENIDO20: { type: "flat", value: 20, label: "S/20 de descuento" },
-};
 
 const steps = ["Carrito", "Datos", "Pago", "Confirmacion"];
 
@@ -43,9 +21,8 @@ const emptyForm = {
 function Checkout() {
   const { cart, clearCart, addToCart } = useContext(CartContext);
   const { user, updateUserProfile } = useContext(AuthContext);
-  const { products, decrementStock } = useContext(ProductContext);
-  const { formatPrice } = useContext(CurrencyContext);
-  const formatAmount = (value) => formatPrice(Number(value) || 0);
+  const { products, decrementStocks } = useContext(ProductContext);
+  const formatAmount = formatPEN;
   const [form, setForm] = useState(emptyForm);
   const [paymentMethod, setPaymentMethod] = useState("");
   const [processing, setProcessing] = useState(false);
@@ -54,21 +31,6 @@ function Checkout() {
   const [couponInput, setCouponInput] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponStatus, setCouponStatus] = useState("");
-
-  const generateOrderToken = () => {
-    const pool = "abcdefghijklmnopqrstuvwxyz0123456789";
-    const randomPart = () => Array.from({ length: 8 }, () => pool[Math.floor(Math.random() * pool.length)]).join("");
-    const existing = new Set();
-    try {
-      const stored = JSON.parse(localStorage.getItem("orders")) || [];
-      stored.forEach((o) => o.token && existing.add(o.token));
-    } catch {}
-    let token = "";
-    do {
-      token = `tok_${randomPart()}`;
-    } while (existing.has(token));
-    return token;
-  };
 
   useEffect(() => {
     if (!user) {
@@ -84,7 +46,7 @@ function Checkout() {
       ciudad: defaultAddress.ciudad || "",
       telefono: defaultAddress.telefono || "",
     });
-  }, [user]);
+  }, [user, form]);
 
   const subtotal = useMemo(
     () => cart.reduce((sum, product) => sum + product.precio * product.cantidad, 0),
@@ -95,20 +57,16 @@ function Checkout() {
 
   const discountAmount = useMemo(() => {
     if (!appliedCoupon) return 0;
-    if (appliedCoupon.type === "percent") {
-      return (subtotal * appliedCoupon.value) / 100;
-    }
-    if (appliedCoupon.type === "flat") {
-      return appliedCoupon.value;
-    }
-    return 0;
+    return appliedCoupon.strategy.calculate(subtotal);
   }, [appliedCoupon, subtotal]);
 
   const cappedDiscount = Math.min(discountAmount, subtotal);
-  const effectiveShipping = appliedCoupon?.type === "shipping" ? 0 : baseShipping;
+  const effectiveShipping = appliedCoupon
+    ? appliedCoupon.strategy.shipping(baseShipping)
+    : baseShipping;
   const totalToPay = Math.max(subtotal - cappedDiscount, 0) + effectiveShipping;
 
-  const currentStep = order ? 4 : 3;
+  const currentStep = order ? 4 : paymentMethod ? 3 : Object.values(form).some(Boolean) ? 2 : 1;
 
   const recommendedProducts = useMemo(() => {
     const available = products.filter((product) => product.stock > 0);
@@ -134,13 +92,13 @@ function Checkout() {
       setCouponStatus("Ingresa un codigo de descuento.");
       return;
     }
-    const coupon = coupons[rawCode];
+    const coupon = CouponStrategyFactory.create(rawCode);
     if (!coupon) {
       setAppliedCoupon(null);
       setCouponStatus("Codigo invalido o no disponible.");
       return;
     }
-    setAppliedCoupon({ code: rawCode, ...coupon });
+    setAppliedCoupon(coupon);
     setCouponStatus("Cupon " + rawCode + " aplicado: " + coupon.label + ".");
   };
 
@@ -150,70 +108,29 @@ function Checkout() {
     setCouponStatus("Cupon eliminado.");
   };
 
-  const simulatePayment = (selectedOption) => {
-    const orderItems = cart.map((item) => ({ ...item }));
-    const shippingData = { ...form };
-    const orderId = "ORD-" + Date.now();
-    const token = generateOrderToken();
-    const reference = selectedOption.id.toUpperCase() + "-" + Math.floor(Math.random() * 1_000_000);
-
+  const processOrder = async () => {
     try {
-      const storedOrders = JSON.parse(localStorage.getItem("orders")) || [];
-      const newOrder = {
-        id: orderId,
-        token,
-        date: new Date().toISOString(),
-        items: orderItems,
-        subtotal: Number(subtotal.toFixed(2)),
-        shippingCost: Number(effectiveShipping.toFixed(2)),
-        discount: Number(cappedDiscount.toFixed(2)),
-        coupon: appliedCoupon?.code || null,
-        total: Number(totalToPay.toFixed(2)),
-        userEmail: user?.email || "invitado",
-        shipping: shippingData,
-        status: "pendiente",
-        payment: {
-          method: selectedOption.id,
-          label: selectedOption.label,
-          reference,
-          status: "paid",
-        },
-      };
-
-      storedOrders.push(newOrder);
-      localStorage.setItem("orders", JSON.stringify(storedOrders));
-      setOrder(newOrder);
-      orderItems.forEach((item) => decrementStock(item.id, item.cantidad || 1));
+      const createdOrder = await checkoutFacade.placeOrder({
+        cart,
+        form,
+        user,
+        paymentMethod,
+        subtotal,
+        shippingCost: effectiveShipping,
+        discount: cappedDiscount,
+        couponCode: appliedCoupon?.code,
+        total: totalToPay,
+        decrementStocks,
+        updateUserProfile,
+        formatAmount,
+      });
+      setOrder(createdOrder);
       clearCart();
       setForm({ ...emptyForm });
       setPaymentMethod("");
       setCouponInput("");
-
-      if (user) {
-        updateUserProfile({
-          lastOrderAt: new Date().toISOString(),
-          defaultAddress: {
-            nombre: shippingData.nombre,
-            direccion: shippingData.direccion,
-            ciudad: shippingData.ciudad,
-            telefono: shippingData.telefono,
-          },
-        });
-        sendSimulatedEmail({
-          to: user.email,
-          subject: "Confirmacion de pedido " + orderId,
-          body:
-            "Hola " +
-            (user.displayName || shippingData.nombre || "" ) +
-            ", tu pedido " +
-            orderId +
-            " se registro por " +
-            formatAmount(newOrder.total) +
-            ". Gracias por comprar en UniShop.",
-        });
-      }
-    } catch (err) {
-      setError("No se pudo guardar el pedido. Intenta nuevamente.");
+    } catch (processingError) {
+      setError(processingError.message || "No se pudo completar el pedido. Intenta nuevamente.");
     } finally {
       setProcessing(false);
     }
@@ -237,18 +154,17 @@ function Checkout() {
     setProcessing(true);
     setError("");
 
-    const chosen = paymentOptions.find((option) => option.id === paymentMethod);
-    if (!chosen) {
+    if (!paymentOptions.some((option) => option.id === paymentMethod)) {
       setProcessing(false);
-      setError("Metodo de pago no valido.");
+      setError("Método de pago no válido.");
       return;
     }
 
-    setTimeout(() => simulatePayment(chosen), 1500);
+    void processOrder();
   };
 
   const renderProgress = () => (
-    <div className="checkout-progress">
+      <div className="checkout-progress">
       {steps.map((label, index) => {
         const stepNumber = index + 1;
         const state =
@@ -304,11 +220,11 @@ function Checkout() {
     lines.push("Total: " + formatAmount(order.total));
     lines.push("Estado: " + (order.status || "pendiente"));
     const content = lines.join("\n");
-    const blob = new Blob([content], { type: "application/pdf" });
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = order.id + "-recibo.pdf";
+    link.download = order.id + "-comprobante.txt";
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
@@ -319,19 +235,19 @@ function Checkout() {
       <div className="checkout">
         {renderProgress()}
         <div className="checkout-success">
-          <h2>Compra exitosa!</h2>
+          <h2>Pedido confirmado</h2>
           <p>
-            Tu pedido <strong>{order.id}</strong> se pago con {order.payment.label}.
+            Tu pedido <strong>{order.id}</strong> quedó registrado. El flujo de pago es una simulación.
           </p>
           <div className="success-details">
             <p>
-              <strong>Referencia de pago:</strong> {order.payment.reference}
+              <strong>Referencia simulada:</strong> {order.payment.reference}
             </p>
             <p>
               <strong>Token de pedido:</strong> {order.token}
             </p>
             <p>
-              <strong>Total pagado:</strong> {formatAmount(order.total)}
+              <strong>Total registrado:</strong> {formatAmount(order.total)}
             </p>
             {order.discount > 0 && (
               <p>
@@ -340,7 +256,7 @@ function Checkout() {
             )}
             {user && (
               <p>
-                <strong>Correo enviado:</strong> Revisa tu bandeja para la confirmacion.
+                <strong>Confirmación local:</strong> Se guardó un registro de correo simulado en el navegador.
               </p>
             )}
           </div>
@@ -358,7 +274,7 @@ function Checkout() {
               className="receipt-button"
               onClick={handleDownloadReceipt}
             >
-              Descargar recibo
+              Descargar comprobante
             </button>
             <Link className="continue-link" to="/productos">
               Seguir comprando
@@ -466,7 +382,7 @@ function Checkout() {
             type="submit"
             disabled={cart.length === 0 || processing}
           >
-            {processing ? "Procesando pago..." : "Pagar " + formatAmount(totalToPay)}
+            {processing ? "Registrando pedido…" : "Confirmar pedido simulado · " + formatAmount(totalToPay)}
           </button>
         </form>
 

@@ -1,5 +1,6 @@
 ﻿import React, { createContext, useCallback, useMemo, useState } from "react";
 
+// eslint-disable-next-line react-refresh/only-export-components -- The context and its provider belong together.
 export const ToastContext = createContext();
 
 let toastIdCounter = 0;

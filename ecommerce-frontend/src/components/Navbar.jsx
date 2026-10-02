@@ -43,7 +43,7 @@ function Navbar() {
   return (
     <nav className="navbar">
       <div className="navbar-left">
-        <div className="navbar-logo">UniShop</div>
+        <Link className="navbar-logo" to="/" onClick={closeMenu}>UniShop</Link>
         <button
           className="navbar-toggle"
           onClick={toggleMenu}
@@ -94,7 +94,7 @@ function Navbar() {
         {isAdmin && (
           <li>
             <Link to="/admin" onClick={closeMenu}>
-              Admin
+              Administración
             </Link>
           </li>
         )}

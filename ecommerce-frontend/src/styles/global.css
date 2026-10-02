@@ -1,8 +1,20 @@
+ :root {
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  color: #202a3d;
+  background: #f3f5f9;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --unishop-navy: #10182c;
+  --unishop-cyan: #00bfd3;
+  --unishop-surface: #ffffff;
+  --unishop-page: #f3f5f9;
+}
+
 body {
   margin: 0;
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-  background: #f9f9f9;
-  color: #222;
+  background: var(--unishop-page);
+  color: #202a3d;
 }
 
 html, body, #root { height: 100%; }

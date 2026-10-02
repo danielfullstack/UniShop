@@ -1,6 +1,6 @@
 import { useContext, useEffect, useMemo, useState } from "react";
 import { AuthContext } from "../context/AuthContext";
-import { CurrencyContext } from "../context/CurrencyContext";
+import { formatPEN } from "../utils/formatPEN";
 import "./UserProfile.css";
 
 const ORDER_STATUSES = ["pendiente", "preparando", "enviado", "entregado"];
@@ -17,7 +17,6 @@ const formatDate = (value) => {
 
 function UserProfile() {
   const { user, logout, updateUserProfile } = useContext(AuthContext);
-  const { formatPrice } = useContext(CurrencyContext);
   const [editing, setEditing] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [profileForm, setProfileForm] = useState({
@@ -105,20 +104,25 @@ function UserProfile() {
     setProfileForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSaveProfile = (event) => {
+  const handleSaveProfile = async (event) => {
     event.preventDefault();
-    updateUserProfile({
-      displayName: profileForm.displayName.trim() || user.displayName || "",
-      defaultAddress: {
-        nombre:
-          profileForm.nombreEnvio.trim() || profileForm.displayName.trim() || user.displayName || "",
-        direccion: profileForm.direccion.trim(),
-        ciudad: profileForm.ciudad.trim(),
-        telefono: profileForm.telefono.trim(),
-      },
-    });
-    setFeedback("Perfil actualizado correctamente.");
-    setEditing(false);
+    try {
+      await updateUserProfile({
+        displayName: profileForm.displayName.trim() || user.displayName || "",
+        defaultAddress: {
+          nombre:
+            profileForm.nombreEnvio.trim() || profileForm.displayName.trim() || user.displayName || "",
+          direccion: profileForm.direccion.trim(),
+          ciudad: profileForm.ciudad.trim(),
+          telefono: profileForm.telefono.trim(),
+        },
+      });
+      setFeedback("Perfil actualizado correctamente.");
+      setEditing(false);
+    } catch (error) {
+      setFeedback(error.message || "No se pudo actualizar el perfil.");
+      return;
+    }
     setTimeout(() => setFeedback(""), 3000);
   };
 
@@ -146,7 +150,7 @@ function UserProfile() {
           </div>
           <div>
             <span>Total filtrado:</span>
-            <strong>{formatPrice(totalGastado)}</strong>
+            <strong>{formatPEN(totalGastado)}</strong>
           </div>
         </div>
         <div className="profile-actions">
@@ -255,7 +259,7 @@ function UserProfile() {
                   </div>
                   <div className="order-meta">
                     <span>Fecha: {formatDate(order.date)}</span>
-                    <span>Total: {formatPrice(order.total || 0)}</span>
+                    <span>Total: {formatPEN(order.total || 0)}</span>
                     {order.token && <span>Token: {order.token}</span>}
                     {order.coupon && <span>Cupon: {order.coupon}</span>}
                   </div>
@@ -264,7 +268,7 @@ function UserProfile() {
                     <ul>
                       {order.items.map((item) => (
                         <li key={item.id}>
-                          {item.nombre} x {item.cantidad} - {formatPrice(item.precio * item.cantidad)}
+                          {item.nombre} x {item.cantidad} - {formatPEN(item.precio * item.cantidad)}
                         </li>
                       ))}
                     </ul>

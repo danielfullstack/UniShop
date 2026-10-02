@@ -1,31 +1,31 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { CartContext } from "../context/CartContext";
 import { WishlistContext } from "../context/WishlistContext";
-import { CurrencyContext } from "../context/CurrencyContext";
+import { ToastContext } from "../context/ToastContext";
+import { formatPEN } from "../utils/formatPEN";
+import ProductModal from "./ProductModal";
 
 function ProductCard({ product }) {
   const { addToCart } = useContext(CartContext);
   const { isInWishlist, toggleWishlist, canManageWishlist } = useContext(WishlistContext);
-  const { formatPrice } = useContext(CurrencyContext);
+  const { notify } = useContext(ToastContext);
   const [isOpen, setIsOpen] = useState(false);
-
+  const navigate = useNavigate();
   const favorited = isInWishlist(product.id);
+  const image = product.imagen || product.imagenes?.[0];
 
   const handleWishlist = () => {
     if (!canManageWishlist) {
-      window.alert("Inicia sesion para guardar favoritos.");
+      notify("Inicia sesión para guardar productos favoritos.", { type: "info" });
+      navigate("/login");
       return;
     }
-    toggleWishlist(product.id);
+    const result = toggleWishlist(product.id);
+    notify(result.status === "removed" ? "Producto quitado de favoritos." : "Producto guardado en favoritos.", {
+      type: "success",
+    });
   };
-
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === "Escape") setIsOpen(false);
-    };
-    if (isOpen) document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [isOpen]);
 
   return (
     <>
@@ -36,78 +36,43 @@ function ProductCard({ product }) {
             type="button"
             className={`wishlist-button${favorited ? " is-active" : ""}`}
             onClick={handleWishlist}
+            aria-pressed={favorited}
           >
-            {favorited ? "En favoritos" : "Guardar"}
+            {favorited ? "Guardado" : "Favorito"}
           </button>
         </div>
-        <img src={product.imagen} alt={product.nombre} />
+        {image && <img src={image} alt={product.nombre} loading="lazy" />}
         <h3>{product.nombre}</h3>
-        {product.descripcion && (
-          <p className="product-description">{product.descripcion}</p>
-        )}
-        <p>Precio: {formatPrice(product.precio)}</p>
-        <p className={product.stock > 0 ? "stock-ok" : "stock-out"}>Stock: {product.stock}</p>
+        {product.descripcion && <p className="product-description">{product.descripcion}</p>}
+        <p className="product-price">{formatPEN(product.precio)}</p>
+        <p className={product.stock > 0 ? "stock-ok" : "stock-out"}>
+          {product.stock > 0 ? `Disponible: ${product.stock}` : "Sin stock"}
+        </p>
         {product.etiquetas?.length > 0 && (
           <div className="product-tags">
-            {product.etiquetas.map((tag) => (
-              <span key={tag} className="product-tag">
-                {tag}
-              </span>
-            ))}
+            {product.etiquetas.map((tag) => <span key={tag} className="product-tag">{tag}</span>)}
           </div>
         )}
         <div className="product-actions">
-          <button type="button" className="secondary" onClick={() => setIsOpen(true)}>
-            Ver
-          </button>
-          <button
-            type="button"
-            disabled={product.stock <= 0}
-            onClick={() => addToCart(product)}
-          >
+          <button type="button" className="secondary" onClick={() => setIsOpen(true)}>Ver detalle</button>
+          <button type="button" disabled={product.stock <= 0} onClick={() => addToCart(product)}>
             {product.stock > 0 ? "Agregar al carrito" : "Sin stock"}
           </button>
         </div>
       </article>
 
       {isOpen && (
-        <div className="modal-overlay" onClick={() => setIsOpen(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setIsOpen(false)} aria-label="Cerrar">
-              ×
-            </button>
-            <div className="modal-body">
-              <img src={product.imagen} alt={product.nombre} className="modal-image" />
-              <div className="modal-content">
-                <h3 className="modal-title">{product.nombre}</h3>
-                {product.descripcion && <p className="modal-description">{product.descripcion}</p>}
-                <p className="modal-price">Precio: {formatPrice(product.precio)}</p>
-                <p className="modal-stock">
-                  Stock disponible: <strong>{product.stock}</strong>
-                </p>
-                <div className="modal-actions">
-                  <button
-                    type="button"
-                    disabled={product.stock <= 0}
-                    onClick={() => {
-                      addToCart(product);
-                      setIsOpen(false);
-                    }}
-                  >
-                    {product.stock > 0 ? "Agregar al carrito" : "Sin stock"}
-                  </button>
-                  <button type="button" className="secondary" onClick={() => setIsOpen(false)}>
-                    Cerrar
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <ProductModal
+          product={product}
+          onClose={() => setIsOpen(false)}
+          onAddToCart={(item) => {
+            addToCart(item);
+            setIsOpen(false);
+          }}
+        />
       )}
     </>
   );
 }
 
 export default ProductCard;
-

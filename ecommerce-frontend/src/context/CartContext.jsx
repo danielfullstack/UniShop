@@ -1,7 +1,9 @@
 ﻿import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AuthContext } from "./AuthContext";
 import { ToastContext } from "./ToastContext";
+import { ProductContext } from "./ProductContext";
 
+// eslint-disable-next-line react-refresh/only-export-components -- The context and its provider belong together.
 export const CartContext = createContext();
 
 const decodeCart = (value) => {
@@ -35,6 +37,7 @@ const readCartFromStorage = (key) => {
 export const CartProvider = ({ children }) => {
   const { user } = useContext(AuthContext);
   const { notify } = useContext(ToastContext);
+  const { products } = useContext(ProductContext);
 
   const storageKey = useMemo(
     () => (user?.email ? `cart-${user.email}` : "cart-guest"),
@@ -67,25 +70,30 @@ export const CartProvider = ({ children }) => {
 
   const addToCart = (product) => {
     if (!product) return;
-    if (Number(product.stock) <= 0) {
+    const currentProduct = products.find((item) => String(item.id) === String(product.id)) || product;
+    if (Number(currentProduct.stock) <= 0) {
       notify(`"${product.nombre}" no tiene stock disponible.`, { type: "warning" });
       return;
     }
 
     setCart((prevCart) => {
-      const exists = prevCart.find((item) => item.id === product.id);
+      const exists = prevCart.find((item) => String(item.id) === String(currentProduct.id));
+      if ((exists?.cantidad || 0) + 1 > Number(currentProduct.stock)) {
+        notify(`No hay más unidades disponibles de "${currentProduct.nombre}".`, { type: "warning" });
+        return prevCart;
+      }
       if (exists) {
-        notify(`Cantidad de "${product.nombre}" actualizada en el carrito.`, {
+        notify(`Cantidad de "${currentProduct.nombre}" actualizada en el carrito.`, {
           type: "info",
         });
         return prevCart.map((item) =>
-          item.id === product.id
-            ? { ...item, cantidad: item.cantidad + 1 }
+          String(item.id) === String(currentProduct.id)
+            ? { ...currentProduct, cantidad: item.cantidad + 1 }
             : item
         );
       }
-      notify(`"${product.nombre}" agregado al carrito.`, { type: "success" });
-      return [...prevCart, { ...product, cantidad: 1 }];
+      notify(`"${currentProduct.nombre}" agregado al carrito.`, { type: "success" });
+      return [...prevCart, { ...currentProduct, cantidad: 1 }];
     });
   };
 
@@ -102,9 +110,11 @@ export const CartProvider = ({ children }) => {
   };
 
   const updateQuantity = (id, cantidad) => {
-    const safeValue = Math.max(1, Number(cantidad) || 1);
+    const product = products.find((item) => String(item.id) === String(id));
+    const maximum = product ? Math.max(1, Number(product.stock)) : Infinity;
+    const safeValue = Math.min(maximum, Math.max(1, Number(cantidad) || 1));
     setCart((prevCart) =>
-      prevCart.map((item) => (item.id === id ? { ...item, cantidad: safeValue } : item))
+      prevCart.map((item) => (String(item.id) === String(id) ? { ...item, cantidad: safeValue } : item))
     );
   };
 
